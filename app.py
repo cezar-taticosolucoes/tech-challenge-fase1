@@ -3,15 +3,18 @@ import streamlit as st
 import streamlit_option_menu
 from streamlit_option_menu import option_menu
 from streamlit_echarts import st_echarts
+
 # Import de Funções da Pasta utils/
 from utils.pipeline_export import process_file
 from utils.pipeline_import import process_file_import
 from utils.pipeline_comercio import process_file_comercio
-from utils.functions import format_number
+from utils.functions import format_number, converte_csv, mensagem_sucesso
+
 # Outras bibliotecas
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
+import time
 import pandas as pd
 import plotly.express as px
 
@@ -19,10 +22,8 @@ import plotly.express as px
 st.set_page_config(
     page_title='Analytics | Vinhos',
     page_icon='🍷',
-    layout='centered'
+    layout='wide'
 )
-
-
 
 # Navegação da Aplicação Streamlit
 with st.sidebar:
@@ -40,14 +41,31 @@ engine = create_engine(db_url)
 
 
 #### Tabelas para montagem dos Dashboards ####
-# Consulta SQL
-query_export = '''
-SELECT *
+# Consulta SQL Tabela: export_vinho
+# Buscar o ano mais recente na base de dados
+query_max_year = '''
+SELECT MAX(CAST("Ano" AS INTEGER)) AS ano_mais_recente
 FROM export_vinho;
 '''
-df_export = pd.read_sql(query_export, engine)
+# Executa a consulta para obter o ano mais recente
+result = pd.read_sql(query_max_year, engine)
 
-df = df_export.groupby('País')[['Quantidade', 'Valor']].sum().sort_values('Valor', ascending=False).reset_index()
+# Converte o ano mais recente para inteiro
+ano_mais_recente = int(result.loc[0, 'ano_mais_recente'])
+
+# Define o limite de anos baseado no ano mais recente
+ano_limite = ano_mais_recente - 15
+
+# Consulta SQL para buscar os últimos 15 anos
+query_export = f'''
+SELECT *
+FROM export_vinho
+WHERE CAST("Ano" AS INTEGER) >= {ano_limite};
+'''
+# Executa a consulta com o filtro
+df_export = pd.read_sql(query_export, engine).sort_values('Ano', ascending=True)
+df_export['Ano'] = df_export['Ano'].astype(int)
+
 
 ### Página Analytics ###
 if option == 'Analytics':
@@ -59,60 +77,207 @@ if option == 'Analytics':
     ### Analytics Exportação ###
     with tab1:
         st.subheader('Exportação de Vinho | País de Origem: Brasil')
+        st.markdown(f'Período: {ano_limite} - {ano_mais_recente}')
 
-        # Entrada do usuário para filtro
-        with st.expander('Pesquise por um País'):
-            search = st.text_input('', '')
+        sub_tab1, sub_tab2 = st.tabs(['Dashboard 📊', 'Table 📅'])
 
-        # **Filtro dinâmico**
-        if search.strip():
-            filtered_df = df[df["País"].str.contains(
-                search.strip(), case=False, na=False)]
-        else:
-            filtered_df = df.copy()
+        ### Exportação: Dashboard
+        with sub_tab1:
+            with st.container():
+                # Filtros
+                with st.expander('Filtros'):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        # Filtro Número de Países
+                        number_paises = st.number_input('Número de países a serem análisados', min_value=2, max_value=15, value=5, help='Selecionar o número de Países que serão análisados: de 2 a 15.')
+                    with col2:
+                        # Filtro de Tipo
+                        tipos_disponiveis = df_export['Tipo'].dropna().unique()  # Obtém os tipos únicos
+                        tipo_selecionado = st.multiselect(
+                            "Selecione o(s) Tipo(s):",
+                            options=tipos_disponiveis,
+                            default=tipos_disponiveis
+                        )
+                    with col3:
+                        # Filtro de Período
+                        year = st.slider(
+                            "Selecione um Período de Anos",
+                            df_export['Ano'].min(),
+                            df_export['Ano'].max(),
+                            (df_export['Ano'].min(), df_export['Ano'].max()),
+                            key="year_slider"
+                        )
+                
+                # Aplicar filtros no DataFrame
+                df_filtered = df_export[
+                    (df_export['Ano'] >= year[0]) & 
+                    (df_export['Ano'] <= year[1]) &
+                    (df_export['Tipo'].isin(tipo_selecionado))
+                ]
 
-        # **Cálculo das métricas filtradas**
-        total_quantity = filtered_df["Quantidade"].sum()
-        total_value = filtered_df["Valor"].sum()
+                # Filtrar os países com maior valor dentro do intervalo e tipo selecionados
+                top_countries = (
+                    df_filtered.groupby('País')['Valor']
+                    .sum()
+                    .nlargest(number_paises)
+                    .index
+                )
+                df_filtered = df_filtered[df_filtered['País'].isin(top_countries)]
 
-        # **Formatação de valores para exibição**
-        quantidade_formatada = format_number(total_quantity)
-        valor_formatado = format_number(total_value)
+                # Agregar os dados por Ano e País
+                df_export_agg = (
+                    df_filtered.groupby(['Ano', 'País'], as_index=False)['Valor']
+                    .sum()
+                )
 
-        fig_valor_pais = px.bar(filtered_df.head(7),
-                                x='País',
-                                y='Valor',
-                                text_auto=True,
-                                title='Valor (US$) por País',
-                                color_discrete_sequence=['#F1145C']
-                                )
+                #### Criação dos Gráficos ####
+                # Gráfico de barras - Valor
+                df_valor_pais = (
+                    df_filtered.groupby('País', as_index=False)['Valor']
+                    .sum()
+                    .nlargest(number_paises, 'Valor')
+                )
 
-        # **Exibição de métricas**
-        col1, col2 = st.columns(2)
-        with col1:
-            col1.metric("🍷 Quantidade Total (L)", quantidade_formatada)
-        with col2:
-            col2.metric("💵 Valor Total (US$)", valor_formatado)
+                # Garante a ordem dos países baseada nos valores
+                country_order_valor = df_valor_pais.sort_values('Valor', ascending=False)['País'].tolist()
 
-        st.plotly_chart(fig_valor_pais)
+                fig_valor_pais = px.bar(
+                    df_valor_pais,
+                    x='Valor',
+                    y='País',
+                    text_auto='.2s',
+                    title=f"Valor (US$): Top {number_paises} Países",
+                    color_discrete_sequence=['#F1145C'],
+                    category_orders={"País": country_order_valor},
+                    hover_data={'País': True, 'Valor': ':.2f'},
+                    height=500 + (number_paises - 5) * 50
+                )
 
-        # **Exibição da tabela com os dados filtrados**
-        if not filtered_df.empty:
-            st.dataframe(
-                filtered_df,
-                width=800,
-                hide_index=True,
-                column_config={
-                    'Quantidade': st.column_config.NumberColumn('Quantidade (L)', format='%.2f'),
-                    'Valor': st.column_config.NumberColumn('Valor (US$)', format='%.2f')
-                }
+                # Gráfico de barras - Quantidade
+                df_quant_pais = (
+                    df_filtered.groupby('País', as_index=False)['Quantidade']
+                    .sum()
+                    .nlargest(number_paises, 'Quantidade')
+                )
+
+                # Garante a ordem dos países baseada nas quantidades
+                country_order_quant = df_quant_pais.sort_values('Quantidade', ascending=False)['País'].tolist()
+
+                fig_quant_pais = px.bar(
+                    df_quant_pais,
+                    x='Quantidade',
+                    y='País',
+                    text_auto='.2s',
+                    title=f"Quantidade Total (L): Top {number_paises} Países",
+                    color_discrete_sequence=['#F1145C'],
+                    category_orders={"País": country_order_quant},
+                    hover_data={'País': True, 'Quantidade': ':.2f'},
+                    height=500 + (number_paises - 5) * 50
+                )
+
+                # Gráfico de linhas - Valor por Ano
+                fig_valor_ano_pais = px.line(
+                    df_export_agg,
+                    x='Ano',
+                    y='Valor',
+                    color='País',
+                    range_y=(df_export_agg['Valor'].min() - 1000000, df_export_agg['Valor'].max() + 1000000),
+                    markers=True,
+                    title=f"Valor por Ano (US$): Top {number_paises} Países",
+                    color_discrete_sequence=px.colors.qualitative.Set1,
+                    hover_data={'Ano': True, 'Valor': ':.2f'}
+                )
+
+                # Gráficos de Barras
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric(f'💵 Valor Total (US$): Top {number_paises} Países', format_number(df_valor_pais['Valor'].sum()))
+                    st.plotly_chart(fig_valor_pais, use_container_width=True)
+                with col2:
+                    st.metric(f'🍷 Quantidade Total (L): Top {number_paises} Países', format_number(df_quant_pais['Quantidade'].sum()))
+                    st.plotly_chart(fig_quant_pais, use_container_width=True)
+
+                st.plotly_chart(fig_valor_ano_pais, use_container_width=True)
+
+        # Exportação: Sessão Tables
+        with sub_tab2:
+            # Entrada do usuário para filtro
+            with st.expander('Filtros'):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    pais = st.multiselect('Selecione um país', pd.Series(df_export['País'].unique()).sort_values(ascending=True))
+                with col2:
+                    tipo = st.multiselect('Selecione os tipos', pd.Series(df_export['Tipo'].unique()).sort_values(ascending=True))
+                with col3:
+                    year = st.slider('Selecione um Período de Anos', 
+                                    df_export['Ano'].min(), 
+                                    df_export['Ano'].max(), 
+                                    (df_export['Ano'].min(), df_export['Ano'].max()))
+
+            # Aplicando os filtros no DataFrame
+            df_filtrado = df_export.copy()
+
+            if pais:
+                df_filtrado = df_filtrado[df_filtrado['País'].isin(pais)]
+            if tipo:
+                df_filtrado = df_filtrado[df_filtrado['Tipo'].isin(tipo)]
+            if year:
+                df_filtrado = df_filtrado[
+                    (df_filtrado['Ano'] >= year[0]) & (df_filtrado['Ano'] <= year[1])
+                ]
+
+            # Cálculo das métricas filtradas
+            total_quantity = df_filtrado["Quantidade"].sum()
+            total_value = df_filtrado["Valor"].sum()
+
+            # Formatação de valores para exibição
+            quantidade_formatada = format_number(total_quantity)
+            valor_formatado = format_number(total_value)
+
+            # Exibição de métricas
+            col1, col2 = st.columns(2)
+            with col1:
+                col1.metric("💵 Valor Total (US$)", valor_formatado)
+            with col2:
+                col2.metric("🍷 Quantidade Total (L)", quantidade_formatada)
+
+            # Exibição da tabela com os dados filtrados
+            if not df_filtrado.empty:
+                st.dataframe(
+                    df_filtrado,
+                    hide_index=True,
+                    width=2000,
+                    column_config={
+                        'Quantidade': st.column_config.NumberColumn('Quantidade (L)', format='%.2f'),
+                        'Valor': st.column_config.NumberColumn('Valor (US$)', format='%.2f'),
+                        'Ano': st.column_config.NumberColumn('Ano', format='%d')
+                    }
+                )
+            else:
+                st.warning("Nenhum resultado encontrado para os filtros aplicados.")
+            
+            st.markdown(
+                f"""
+                <p>A tabela possui <span style="color:#F1145C;">{df_filtrado.shape[0]}</span> linhas.
+                """, 
+                unsafe_allow_html=True
             )
-        else:
-            st.warning("Nenhum resultado encontrado para o termo pesquisado.")
+
+            st.markdown('Escreva um nome para o arquivo')
+            coluna1, coluna2 = st.columns(2)
+            with coluna1:
+                nome_arquivo = st.text_input('', label_visibility = 'collapsed', value = 'dados')
+                nome_arquivo += '.csv'
+            with coluna2:
+                st.download_button('Download', data = converte_csv(df_filtrado), file_name = nome_arquivo, mime = 'text/csv', on_click = mensagem_sucesso, help='Clique para fazer download dos dados em formato csv.')
 
     ### Analytics Importações ###
     with tab2:
         st.subheader('Importação de Vinho | País de Destino: Brasil')
+
+        st.markdown(f'Período: {ano_limite} - {ano_mais_recente}')
+
+        sub_tab1, sub_tab2 = st.tabs(['Dashboard 📊', 'Table 📅'])
 
 elif option == 'Upload':
     st.title('Upload de Dados')
@@ -337,9 +502,6 @@ elif option == 'Upload':
                 except Exception as e:
                     st.error(f'Erro ao salvar os dados no banco de dados: {e}')
 
-# Obter o ano atual
-current_year = datetime.now().year
-
 # Adicionar rodapé com informações de direitos autorais
 st.markdown(f"""
     <style>
@@ -355,6 +517,6 @@ st.markdown(f"""
     }}
     </style>
     <footer>
-        {current_year} - FIAP | PÓS TECH | Data Analytics | Tech Challenge - Cézar Maldini. Todos os direitos reservados.
+        {datetime.now().year} - FIAP | PÓS TECH | Data Analytics | Tech Challenge - Cézar Maldini. Todos os direitos reservados.
     </footer>
 """, unsafe_allow_html=True)
