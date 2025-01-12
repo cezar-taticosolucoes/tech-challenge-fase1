@@ -13,6 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
 import pandas as pd
+import plotly.express as px
 
 # Configuração inicial da Aplicação Streamlit
 st.set_page_config(
@@ -42,15 +43,13 @@ if option == 'Analytics':
     
     #### Tabelas para montagem dos Dashboards ####
     # Consulta SQL
-    query = '''
-    SELECT "País",
-           SUM("Quantidade") AS Quantidade, 
-           SUM("Valor") AS Valor
-    FROM exportacoes_vinho 
-    GROUP BY "País" 
-    ORDER BY "País";
+    query_export = '''
+    SELECT *
+    FROM exportacoes_vinho;
     '''
-    df = pd.read_sql(query, engine)
+    df_export = pd.read_sql(query_export, engine)
+
+    df = df_export.groupby('País')[['Quantidade', 'Valor']].sum().sort_values('Valor', ascending=False).reset_index()
 
     ### Visualização no Streamlit ###
     tab1, tab2, tab3 = st.tabs(['Exportação', 'Importação', 'Comercialização'])
@@ -70,12 +69,19 @@ if option == 'Analytics':
             filtered_df = df.copy()
 
         # **Cálculo das métricas filtradas**
-        total_quantity = filtered_df["quantidade"].sum()
-        total_value = filtered_df["valor"].sum()
+        total_quantity = filtered_df["Quantidade"].sum()
+        total_value = filtered_df["Valor"].sum()
 
         # **Formatação de valores para exibição**
         quantidade_formatada = format_number(total_quantity)
         valor_formatado = format_number(total_value)
+
+        fig_valor_pais = px.bar(filtered_df.head(), 
+                                x='País', 
+                                y='Valor', 
+                                text_auto=True, 
+                                title='Valor (US$) por País'
+                            )
 
         # **Exibição de métricas**
         col1, col2 = st.columns(2)
@@ -84,6 +90,8 @@ if option == 'Analytics':
         with col2:
             col2.metric("💵 Valor Total (US$)", valor_formatado)
 
+        st.plotly_chart(fig_valor_pais)
+
         # **Exibição da tabela com os dados filtrados**
         if not filtered_df.empty:
             st.dataframe(
@@ -91,8 +99,8 @@ if option == 'Analytics':
                 width=800,
                 hide_index=True,
                 column_config={
-                    'quantidade': st.column_config.NumberColumn('Quantidade (L)', format='%.2f'),
-                    'valor': st.column_config.NumberColumn('Valor (US$)', format='%.2f')
+                    'Quantidade': st.column_config.NumberColumn('Quantidade (L)', format='%.2f'),
+                    'Valor': st.column_config.NumberColumn('Valor (US$)', format='%.2f')
                 }
             )
         else:
