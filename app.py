@@ -22,6 +22,8 @@ st.set_page_config(
     layout='centered'
 )
 
+
+
 # Navegação da Aplicação Streamlit
 with st.sidebar:
     option = option_menu(
@@ -33,23 +35,23 @@ with st.sidebar:
     )
 
 # Configurar a conexão com o banco de dados PostgreSQL
-db_url = "postgresql://db_app_personal:PB6cGDCHizDVGfW71Bqaeme56B4EAqOV@dpg-ctdo04rgbbvc73fk9tv0-a.oregon-postgres.render.com/db_app_personal_ip2i"
+db_url = "postgresql://db_data_tech:dxNVQ2xbdjHmABoVE84CYMGnyo8EOasa@dpg-cu1qptpu0jms738l9cog-a.oregon-postgres.render.com/db_data_tech"
 engine = create_engine(db_url)
 
+
+#### Tabelas para montagem dos Dashboards ####
+# Consulta SQL
+query_export = '''
+SELECT *
+FROM export_vinho;
+'''
+df_export = pd.read_sql(query_export, engine)
+
+df = df_export.groupby('País')[['Quantidade', 'Valor']].sum().sort_values('Valor', ascending=False).reset_index()
 
 ### Página Analytics ###
 if option == 'Analytics':
     st.title('Data Analytics')
-    
-    #### Tabelas para montagem dos Dashboards ####
-    # Consulta SQL
-    query_export = '''
-    SELECT *
-    FROM exportacoes_vinho;
-    '''
-    df_export = pd.read_sql(query_export, engine)
-
-    df = df_export.groupby('País')[['Quantidade', 'Valor']].sum().sort_values('Valor', ascending=False).reset_index()
 
     ### Visualização no Streamlit ###
     tab1, tab2, tab3 = st.tabs(['Exportação', 'Importação', 'Comercialização'])
@@ -64,7 +66,8 @@ if option == 'Analytics':
 
         # **Filtro dinâmico**
         if search.strip():
-            filtered_df = df[df["País"].str.contains(search.strip(), case=False, na=False)]
+            filtered_df = df[df["País"].str.contains(
+                search.strip(), case=False, na=False)]
         else:
             filtered_df = df.copy()
 
@@ -76,12 +79,13 @@ if option == 'Analytics':
         quantidade_formatada = format_number(total_quantity)
         valor_formatado = format_number(total_value)
 
-        fig_valor_pais = px.bar(filtered_df.head(), 
-                                x='País', 
-                                y='Valor', 
-                                text_auto=True, 
-                                title='Valor (US$) por País'
-                            )
+        fig_valor_pais = px.bar(filtered_df.head(7),
+                                x='País',
+                                y='Valor',
+                                text_auto=True,
+                                title='Valor (US$) por País',
+                                color_discrete_sequence=['#F1145C']
+                                )
 
         # **Exibição de métricas**
         col1, col2 = st.columns(2)
@@ -105,7 +109,7 @@ if option == 'Analytics':
             )
         else:
             st.warning("Nenhum resultado encontrado para o termo pesquisado.")
-    
+
     ### Analytics Importações ###
     with tab2:
         st.subheader('Importação de Vinho | País de Destino: Brasil')
@@ -127,7 +131,8 @@ elif option == 'Upload':
 
         st.image('https://i.ibb.co/WfLxmdh/Data-Pipeline-Tech-Challenge.jpg')
 
-    tab1, tab2, tab3 = st.tabs(['Exportações', 'Importações', 'Comercialização'])
+    tab1, tab2, tab3 = st.tabs(
+        ['Exportações', 'Importações', 'Comercialização'])
 
     ### Upload de Dados de Exportação ###
     with tab1:
@@ -174,7 +179,7 @@ elif option == 'Upload':
             # Botão para salvar os dados no banco de dados
             if st.button('Salvar dados no banco de dados'):
                 try:
-                    table_name = 'exportacoes_vinho'
+                    table_name = 'export_vinho'
                     with engine.connect() as connection:
                         try:
                             existing_data = pd.read_sql(
@@ -196,7 +201,7 @@ elif option == 'Upload':
                         st.warning('Os dados já existem no banco de dados.')
                 except Exception as e:
                     st.error(f'Erro ao salvar os dados no banco de dados: {e}')
-    
+
     ### Upload de Dados de Importação ###
     with tab2:
         st.header('Importação de Vinhos')
@@ -242,7 +247,7 @@ elif option == 'Upload':
             # Botão para salvar os dados no banco de dados
             if st.button('Salvar dados no banco de dados'):
                 try:
-                    table_name = 'importacoes_vinho'
+                    table_name = 'import_vinho'
                     with engine.connect() as connection:
                         try:
                             existing_data = pd.read_sql(
@@ -309,7 +314,7 @@ elif option == 'Upload':
             # Botão para salvar os dados no banco de dados
             if st.button('Salvar dados no banco de dados'):
                 try:
-                    table_name = 'comercializacao_produtos'
+                    table_name = 'comercio_vinho'
                     with engine.connect() as connection:
                         try:
                             existing_data = pd.read_sql(
