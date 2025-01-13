@@ -110,6 +110,8 @@ if option == 'Analytics':
                     df_filtered.groupby(['Ano', 'País'], as_index=False)['Valor']
                     .sum()
                 )
+                
+                st.markdown(f'**Análise de Exportação de Vinho: Top {number_paises} Países**')
 
                 #### Criação dos Gráficos ####
                 # Gráfico de barras - Valor
