@@ -9,6 +9,7 @@ from utils.pipeline_export import process_file
 from utils.pipeline_import import process_file_import
 from utils.pipeline_comercio import process_file_comercio
 from utils.functions import format_number, converte_csv, mensagem_sucesso
+from utils.db_queries import get_last_15_years_data_export, get_last_15_years_data_import
 
 # Outras bibliotecas
 from sqlalchemy import create_engine
@@ -29,8 +30,8 @@ st.set_page_config(
 with st.sidebar:
     option = option_menu(
         menu_title="Navegação",
-        options=["Home", "Analytics", "Upload"],
-        icons=["house", "bar-chart", "arrow-up-square"],
+        options=["Analytics", "Upload"],
+        icons=["bar-chart", "arrow-up-square"],
         menu_icon="card-list",
         default_index=0
     )
@@ -42,30 +43,10 @@ engine = create_engine(db_url)
 
 #### Tabelas para montagem dos Dashboards ####
 # Consulta SQL Tabela: export_vinho
-# Buscar o ano mais recente na base de dados
-query_max_year = '''
-SELECT MAX(CAST("Ano" AS INTEGER)) AS ano_mais_recente
-FROM export_vinho;
-'''
-# Executa a consulta para obter o ano mais recente
-result = pd.read_sql(query_max_year, engine)
+df_export = get_last_15_years_data_export(engine)
 
-# Converte o ano mais recente para inteiro
-ano_mais_recente = int(result.loc[0, 'ano_mais_recente'])
-
-# Define o limite de anos baseado no ano mais recente
-ano_limite = ano_mais_recente - 15
-
-# Consulta SQL para buscar os últimos 15 anos
-query_export = f'''
-SELECT *
-FROM export_vinho
-WHERE CAST("Ano" AS INTEGER) >= {ano_limite};
-'''
-# Executa a consulta com o filtro
-df_export = pd.read_sql(query_export, engine).sort_values('Ano', ascending=True)
-df_export['Ano'] = df_export['Ano'].astype(int)
-
+# Consulta SQL Tabela: import_vinho
+df_import = get_last_15_years_data_import(engine)
 
 ### Página Analytics ###
 if option == 'Analytics':
@@ -77,7 +58,7 @@ if option == 'Analytics':
     ### Analytics Exportação ###
     with tab1:
         st.subheader('Exportação de Vinho | País de Origem: Brasil')
-        st.markdown(f'Período: {ano_limite} - {ano_mais_recente}')
+        st.markdown(f'Período: 2008 - 2023')
 
         sub_tab1, sub_tab2 = st.tabs(['Dashboard 📊', 'Table 📅'])
 
@@ -275,9 +256,201 @@ if option == 'Analytics':
     with tab2:
         st.subheader('Importação de Vinho | País de Destino: Brasil')
 
-        st.markdown(f'Período: {ano_limite} - {ano_mais_recente}')
+        st.markdown(f'Período: 2008 - 2023')
 
         sub_tab1, sub_tab2 = st.tabs(['Dashboard 📊', 'Table 📅'])
+
+        ### Importação: Dashboard
+        with sub_tab1:
+            with st.container():
+                # Filtros
+                with st.expander('Filtros'):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        # Filtro Número de Países
+                        number_paises_import = st.number_input('Número de países a serem análisados', min_value=2, max_value=15, value=5, help='Selecionar o número de Países que serão análisados: de 2 a 15.',key='number_paises_import')
+                    with col2:
+                        # Filtro de Tipo
+                        tipos_disponiveis_import = df_import['Tipo'].dropna().unique()
+                        tipo_selecionado_import = st.multiselect(
+                            "Selecione o(s) Tipo(s):",
+                            options=tipos_disponiveis_import,
+                            default=tipos_disponiveis_import,
+                            key='tipo_selecionado_import'
+                        )
+                    with col3:
+                        # Filtro de Período
+                        year_import = st.slider(
+                            "Selecione um Período de Anos",
+                            df_import['Ano'].min(),
+                            df_import['Ano'].max(),
+                            (df_import['Ano'].min(), df_import['Ano'].max()),
+                            key="year_import"
+                        )
+                
+                # Aplicar filtros no DataFrame
+                df_filtered_import = df_import[
+                    (df_import['Ano'] >= year_import[0]) & 
+                    (df_import['Ano'] <= year_import[1]) &
+                    (df_import['Tipo'].isin(tipo_selecionado_import))
+                ]
+
+                # Filtrar os países com maior valor dentro do intervalo e tipo selecionados
+                top_countries_import = (
+                    df_filtered_import.groupby('País')['Valor']
+                    .sum()
+                    .nlargest(number_paises_import)
+                    .index
+                )
+                df_filtered_import = df_filtered_import[df_filtered_import['País'].isin(top_countries_import)]
+
+                # Agregar os dados por Ano e País
+                df_import_agg = (
+                    df_filtered_import.groupby(['Ano', 'País'], as_index=False)['Valor']
+                    .sum()
+                )
+
+                #### Criação dos Gráficos ####
+                # Gráfico de barras - Valor
+                df_valor_pais_import = (
+                    df_filtered_import.groupby('País', as_index=False)['Valor']
+                    .sum()
+                    .nlargest(number_paises_import, 'Valor')
+                )
+
+                # Garante a ordem dos países baseada nos valores
+                country_order_valor_import = df_valor_pais_import.sort_values('Valor', ascending=False)['País'].tolist()
+
+                fig_valor_pais_import = px.bar(
+                    df_valor_pais_import,
+                    x='Valor',
+                    y='País',
+                    text_auto='.2s',
+                    title=f"Valor (US$): Top {number_paises_import} Países",
+                    color_discrete_sequence=['#F1145C'],
+                    category_orders={"País": country_order_valor_import},
+                    hover_data={'País': True, 'Valor': ':.2f'},
+                    height=500 + (number_paises_import - 5) * 50
+                )
+
+                # Gráfico de barras - Quantidade
+                df_quant_pais_import = (
+                    df_filtered_import.groupby('País', as_index=False)['Quantidade']
+                    .sum()
+                    .nlargest(number_paises_import, 'Quantidade')
+                )
+
+                # Garante a ordem dos países baseada nas quantidades
+                country_order_quant_import = df_quant_pais_import.sort_values('Quantidade', ascending=False)['País'].tolist()
+
+                fig_quant_pais_import = px.bar(
+                    df_quant_pais_import,
+                    x='Quantidade',
+                    y='País',
+                    text_auto='.2s',
+                    title=f"Quantidade Total (L): Top {number_paises_import} Países",
+                    color_discrete_sequence=['#F1145C'],
+                    category_orders={"País": country_order_quant_import},
+                    hover_data={'País': True, 'Quantidade': ':.2f'},
+                    height=500 + (number_paises_import - 5) * 50
+                )
+
+                # Gráfico de linhas - Valor por Ano
+                fig_valor_ano_pais_import = px.line(
+                    df_import_agg,
+                    x='Ano',
+                    y='Valor',
+                    color='País',
+                    range_y=(df_import_agg['Valor'].min() - 1000000, df_import_agg['Valor'].max() + 1000000),
+                    markers=True,
+                    title=f"Valor por Ano (US$): Top {number_paises_import} Países",
+                    color_discrete_sequence=px.colors.qualitative.Set1,
+                    hover_data={'Ano': True, 'Valor': ':.2f'}
+                )
+
+                # Gráficos de Barras
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric(f'💵 Valor Total (US$): Top {number_paises_import} Países', format_number(df_valor_pais_import['Valor'].sum()))
+                    st.plotly_chart(fig_valor_pais_import, use_container_width=True)
+                with col2:
+                    st.metric(f'🍷 Quantidade Total (L): Top {number_paises_import} Países', format_number(df_quant_pais_import['Quantidade'].sum()))
+                    st.plotly_chart(fig_quant_pais_import, use_container_width=True)
+
+                st.plotly_chart(fig_valor_ano_pais_import, use_container_width=True)
+        
+        ### Importação: Tabelas
+        with sub_tab2:
+            # Entrada do usuário para filtro
+            with st.expander('Filtros'):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    pais_import = st.multiselect('Selecione um país', pd.Series(df_import['País'].unique()).sort_values(ascending=True), key='pais_import')
+                with col2:
+                    tipo_import = st.multiselect('Selecione os tipos', pd.Series(df_import['Tipo'].unique()).sort_values(ascending=True), key='tipo_import')
+                with col3:
+                    year_import = st.slider('Selecione um Período de Anos', 
+                                    df_import['Ano'].min(), 
+                                    df_import['Ano'].max(), 
+                                    (df_import['Ano'].min(), df_import['Ano'].max()),
+                                    key='import_year')
+                    
+            # Aplicando os filtros no DataFrame
+            df_filtrado_import = df_import.copy()
+
+            if pais_import:
+                df_filtrado_import = df_filtrado_import[df_filtrado_import['País'].isin(pais_import)]
+            if tipo_import:
+                df_filtrado_import = df_filtrado_import[df_filtrado_import['Tipo'].isin(tipo_import)]
+            if year_import:
+                df_filtrado_import = df_filtrado_import[
+                    (df_filtrado_import['Ano'] >= year_import[0]) & (df_filtrado_import['Ano'] <= year_import[1])
+                ]
+
+            # Cálculo das métricas filtradas
+            total_quantity_import = df_filtrado_import["Quantidade"].sum()
+            total_value_import = df_filtrado_import["Valor"].sum()
+
+            # Formatação de valores para exibição
+            quantidade_formatada_import = format_number(total_quantity_import)
+            valor_formatado_import = format_number(total_value_import)
+
+            # Exibição de métricas
+            col1, col2 = st.columns(2)
+            with col1:
+                col1.metric("💵 Valor Total (US$)", valor_formatado_import)
+            with col2:
+                col2.metric("🍷 Quantidade Total (L)", quantidade_formatada_import)
+
+            # Exibição da tabela com os dados filtrados
+            if not df_filtrado_import.empty:
+                st.dataframe(
+                    df_filtrado_import,
+                    hide_index=True,
+                    width=2000,
+                    column_config={
+                        'Quantidade': st.column_config.NumberColumn('Quantidade (L)', format='%.2f'),
+                        'Valor': st.column_config.NumberColumn('Valor (US$)', format='%.2f'),
+                        'Ano': st.column_config.NumberColumn('Ano', format='%d')
+                    }
+                )
+            else:
+                st.warning("Nenhum resultado encontrado para os filtros aplicados.")
+            
+            st.markdown(
+                f"""
+                <p>A tabela possui <span style="color:#F1145C;">{df_filtrado_import.shape[0]}</span> linhas.
+                """, 
+                unsafe_allow_html=True
+            )
+
+            st.markdown('Escreva um nome para o arquivo')
+            coluna1, coluna2 = st.columns(2)
+            with coluna1:
+                nome_arquivo_import = st.text_input('', label_visibility = 'collapsed', value = 'dados', key='nome_arquivo_import')
+                nome_arquivo_import += '.csv'
+            with coluna2:
+                st.download_button('Download', data = converte_csv(df_filtrado_import), file_name = nome_arquivo_import, mime = 'text/csv', on_click = mensagem_sucesso, help='Clique para fazer download dos dados em formato csv.', key='download_import')
 
 elif option == 'Upload':
     st.title('Upload de Dados')
@@ -288,7 +461,7 @@ elif option == 'Upload':
         - Acesse o site [VITIBRASIL - Embrapa](http://vitibrasil.cnpuv.embrapa.br/index.php?opcao=opt_01) e faça o download dos arquivos CSV desejados.
 
         2. **Upload dos arquivos no app:**
-        - Utilize o botão abaixo para fazer o upload dos arquivos CSV no seu aplicativo.
+        - Utilize o botão abaixo para fazer o upload dos arquivos CSV no aplicativo.
 
         3. **Tratamento e armazenamento no Banco de Dados PostgreSQL:**
         - O aplicativo irá processar os arquivos CSV e armazená-los no Banco de Dados PostgreSQL para a utilização no módulo de Analytics.
@@ -333,7 +506,7 @@ elif option == 'Upload':
             st.write('Dados processados:')
             st.dataframe(
                 consolidated_data,
-                width=800,
+                width=2000,
                 hide_index=True,
                 column_config={
                     'Quantidade': st.column_config.NumberColumn('Quantidade (Kg)', format="%.2f"),
@@ -401,7 +574,7 @@ elif option == 'Upload':
             st.write('Dados processados:')
             st.dataframe(
                 consolidated_data,
-                width=800,
+                width=2000,
                 hide_index=True,
                 column_config={
                     'Quantidade': st.column_config.NumberColumn('Quantidade (Kg)', format="%.2f"),
@@ -410,7 +583,7 @@ elif option == 'Upload':
             )
 
             # Botão para salvar os dados no banco de dados
-            if st.button('Salvar dados no banco de dados'):
+            if st.button('Salvar dados no banco de dados', key='salve_import'):
                 try:
                     table_name = 'import_vinho'
                     with engine.connect() as connection:
@@ -469,7 +642,7 @@ elif option == 'Upload':
             st.write('Dados processados:')
             st.dataframe(
                 consolidated_data,
-                width=800,
+                width=2000,
                 hide_index=True,
                 column_config={
                     'Quantidade': st.column_config.NumberColumn('Quantidade', format='%.2f')
@@ -477,7 +650,7 @@ elif option == 'Upload':
             )
 
             # Botão para salvar os dados no banco de dados
-            if st.button('Salvar dados no banco de dados'):
+            if st.button('Salvar dados no banco de dados', key='save_comercio'):
                 try:
                     table_name = 'comercio_vinho'
                     with engine.connect() as connection:
