@@ -37,7 +37,7 @@ with st.sidebar:
     )
 
 # Configurar a conexão com o banco de dados PostgreSQL
-db_url = "postgresql://db_data_tech:dxNVQ2xbdjHmABoVE84CYMGnyo8EOasa@dpg-cu1qptpu0jms738l9cog-a.oregon-postgres.render.com/db_data_tech"
+db_url = st.secrets["DB_URL"]
 engine = create_engine(db_url)
 
 
@@ -212,7 +212,7 @@ if option == 'Analytics':
 
                 st.markdown(
                     f"""
-                    <h4>Outras Análises</h4>
+                    <h4>Análises Complementares</h4>
                     """,
                     unsafe_allow_html=True
                 )
@@ -237,14 +237,14 @@ if option == 'Analytics':
                     custo_unitario_por_tipo.columns = ['Tipo', 'Custo Unitário Médio']
 
                     # Exibição dos resultados
-                    st.expander("Custo Unitário Médio Total de Exportação de Vinho (US$/L)", expanded=True).markdown(
+                    st.expander("Custo Unitário Médio Total de Exportação de Vinho (US$/L)").markdown(
                         f"""
                         **Custo Unitário Médio Total de Exportação de Vinho (US$/L):** 
                         {custo_unitario_medio_total:,.2f} 
                         """
                     )
 
-                    st.expander("Custo Unitário Médio por Tipo de Vinho (US$/L)", expanded=True).markdown(
+                    st.expander("Custo Unitário Médio por Tipo de Vinho (US$/L)").markdown(
                         "\n".join([f"- **{row['Tipo']}:** {row['Custo Unitário Médio']:,.2f} US$/L" for _, row in custo_unitario_por_tipo.iterrows()])
                     )
                 else:
@@ -300,7 +300,7 @@ if option == 'Analytics':
                     )
 
                 # Exibição dos resultados
-                st.expander("Análise de Pico de Exportação", expanded=True).markdown(explicacao_pico)
+                st.expander("Análise de Pico de Exportação").markdown(explicacao_pico)
 
                 # Análise dos 3 Principais Exportadores de Vinho do Brasil nos Últimos 5 Anos
                 df_export_valid_ultimos_5_anos = df_export_valid[df_export_valid['Ano'] >= (df_export_valid['Ano'].max() - 5)]
@@ -313,7 +313,7 @@ if option == 'Analytics':
                 )
 
                 # Exibição do Top 3 Exportadores
-                with st.expander("Top 3 Exportadores de Vinho do Brasil nos Últimos 5 Anos", expanded=True):
+                with st.expander("Top 3 Exportadores de Vinho do Brasil nos Últimos 5 Anos"):
                     st.markdown("**Top 3 Exportadores de Vinho do Brasil nos Últimos 5 Anos:**")
                     for _, row in top_3_exportadores.iterrows():
                         st.markdown(
