@@ -53,13 +53,10 @@ if option == 'Analytics':
     st.title('Data Analytics')
 
     ### Visualização no Streamlit ###
-    tab1, tab2, tab3 = st.tabs(['Exportação', 'Importação', 'Comercialização'])
+    tab1, tab2 = st.tabs(['Exportação', 'Importação'])
 
     ### Analytics Exportação ###
-    with tab1:
-        st.subheader('Exportação de Vinho | País de Origem: Brasil')
-        st.markdown(f'Período: 2008 - 2023')
-
+    with tab1:       
         sub_tab1, sub_tab2 = st.tabs(['Dashboard 📊', 'Table 📅'])
 
         ### Exportação: Dashboard
@@ -110,8 +107,37 @@ if option == 'Analytics':
                     df_filtered.groupby(['Ano', 'País'], as_index=False)['Valor']
                     .sum()
                 )
-                
-                st.markdown(f'**Análise de Exportação de Vinho: Top {number_paises} Países**')
+
+                # Adicionando os anos filtrados no texto de Período Analisado
+                start_year, end_year = year
+
+                # Subtítulo do dashboard
+                st.markdown(
+                    f"""
+                    <h3> Análise de Exportação de Vinhos: 
+                    <span style="color:#F1145C;">Top {number_paises} Países</span>
+                    </h3>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # Texto do País de Origem com fonte maior
+                st.markdown(
+                    f"""
+                    <p style="font-size:20px;">País de Origem: 
+                    <span style="color:#F1145C;">Brasil</span></p>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # Texto do Período Analisado com fonte maior e anos filtrados
+                st.markdown(
+                    f"""
+                    <p style="font-size:18px;">Período Analisado: 
+                    <span style="color:#F1145C;">{start_year} - {end_year}</span></p>
+                    """,
+                    unsafe_allow_html=True
+                )
 
                 #### Criação dos Gráficos ####
                 # Gráfico de barras - Valor
@@ -182,6 +208,127 @@ if option == 'Analytics':
 
                 st.plotly_chart(fig_valor_ano_pais, use_container_width=True)
 
+                st.divider()
+
+                st.markdown(
+                    f"""
+                    <h4>Outras Análises</h4>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # Análise do Custo Unitário Médio Total de Exportação de Vinho
+                if not df_export.empty:
+                    # Filtrar para evitar divisões por zero ou valores nulos
+                    df_export_valid = df_export[df_export['Quantidade'] > 0].copy()
+                    df_export_valid['Custo Unitário Médio'] = df_export_valid['Valor'] / df_export_valid['Quantidade']
+
+                    # Cálculo do custo unitário médio total
+                    custo_unitario_medio_total = (
+                        df_export_valid['Valor'].sum() / df_export_valid['Quantidade'].sum()
+                        if df_export_valid['Quantidade'].sum() > 0 else 0
+                    )
+
+                    # Cálculo do custo unitário médio por tipo
+                    custo_unitario_por_tipo = (
+                        df_export_valid.groupby('Tipo', as_index=False)
+                        .apply(lambda x: (x['Valor'].sum() / x['Quantidade'].sum()) if x['Quantidade'].sum() > 0 else 0)
+                    )
+                    custo_unitario_por_tipo.columns = ['Tipo', 'Custo Unitário Médio']
+
+                    # Exibição dos resultados
+                    st.expander("Custo Unitário Médio Total de Exportação de Vinho (US$/L)", expanded=True).markdown(
+                        f"""
+                        **Custo Unitário Médio Total de Exportação de Vinho (US$/L):** 
+                        {custo_unitario_medio_total:,.2f} 
+                        """
+                    )
+
+                    st.expander("Custo Unitário Médio por Tipo de Vinho (US$/L)", expanded=True).markdown(
+                        "\n".join([f"- **{row['Tipo']}:** {row['Custo Unitário Médio']:,.2f} US$/L" for _, row in custo_unitario_por_tipo.iterrows()])
+                    )
+                else:
+                    st.warning("Não há dados disponíveis para realizar esta análise.")
+
+                # Análise de Pico de Exportação
+                df_export_valid['Ano'] = df_export_valid['Ano'].astype(int)
+                pico_exportacao = (
+                    df_export_valid.groupby(['País', 'Ano'])[['Valor', 'Quantidade']]
+                    .sum()
+                    .reset_index()
+                    .sort_values(by='Valor', ascending=False)
+                    .iloc[0]
+                )
+                pais_pico = pico_exportacao['País']
+                ano_pico = pico_exportacao['Ano']
+                valor_pico = pico_exportacao['Valor']
+                quantidade_pico = pico_exportacao['Quantidade']
+
+                # Cálculo do custo unitário no ano de pico
+                custo_unitario_pico = valor_pico / quantidade_pico
+
+                # Cálculo do custo unitário no ano anterior
+                df_ano_anterior = df_export_valid[(df_export_valid['País'] == pais_pico) & (df_export_valid['Ano'] == (ano_pico - 1))]
+                if not df_ano_anterior.empty:
+                    valor_ano_anterior = df_ano_anterior['Valor'].sum()
+                    quantidade_ano_anterior = df_ano_anterior['Quantidade'].sum()
+                    custo_unitario_ano_anterior = valor_ano_anterior / quantidade_ano_anterior
+                else:
+                    custo_unitario_ano_anterior = None
+
+                # Análise textual do pico
+                explicacao_pico = (
+                    f"O país **{pais_pico}** registrou o maior pico de exportação de vinho no ano **{ano_pico}**, com um valor total exportado de **{valor_pico:,.2f}** e um volume de **{quantidade_pico:,.2f}** litros. O custo unitário médio no ano de pico foi **{custo_unitario_pico:,.2f}**."
+                )
+
+                # Comparação com o ano anterior
+                if custo_unitario_ano_anterior is not None:
+                    explicacao_pico += (
+                        f" No ano anterior (**{ano_pico - 1}**), o custo unitário médio foi **{custo_unitario_ano_anterior:,.2f}**. "
+                    )
+                    if custo_unitario_pico > custo_unitario_ano_anterior:
+                        explicacao_pico += (
+                            "O aumento no custo unitário médio pode indicar uma exportação de vinhos de maior valor agregado no ano do pico."
+                        )
+                    elif custo_unitario_pico < custo_unitario_ano_anterior:
+                        explicacao_pico += (
+                            "A redução no custo unitário médio sugere que o aumento no valor exportado foi impulsionado principalmente pelo volume."
+                        )
+                else:
+                    explicacao_pico += (
+                        f" Não há dados disponíveis para o ano anterior (**{ano_pico - 1}**) para comparação."
+                    )
+
+                # Exibição dos resultados
+                st.expander("Análise de Pico de Exportação", expanded=True).markdown(explicacao_pico)
+
+                # Análise dos 3 Principais Exportadores de Vinho do Brasil nos Últimos 5 Anos
+                df_export_valid_ultimos_5_anos = df_export_valid[df_export_valid['Ano'] >= (df_export_valid['Ano'].max() - 5)]
+                top_3_exportadores = (
+                    df_export_valid_ultimos_5_anos.groupby('País')
+                    .agg({'Valor': 'sum', 'Quantidade': 'sum'})
+                    .reset_index()
+                    .sort_values(by='Valor', ascending=False)
+                    .head(3)
+                )
+
+                # Exibição do Top 3 Exportadores
+                with st.expander("Top 3 Exportadores de Vinho do Brasil nos Últimos 5 Anos", expanded=True):
+                    st.markdown("**Top 3 Exportadores de Vinho do Brasil nos Últimos 5 Anos:**")
+                    for _, row in top_3_exportadores.iterrows():
+                        st.markdown(
+                            f"- **{row['País']}:** Valor exportado: **{row['Valor']:,.2f}**, Quantidade exportada: **{row['Quantidade']:,.2f}** litros"
+                        )
+
+                    # Cálculo do custo unitário médio total dos últimos 5 anos para os 3 principais exportadores
+                    st.markdown("**Análise do Custo Unitário Médio dos 3 Principais Exportadores nos Últimos 5 Anos:**")
+                    for _, row in top_3_exportadores.iterrows():
+                        df_export_pais = df_export_valid_ultimos_5_anos[df_export_valid_ultimos_5_anos['País'] == row['País']]
+                        custo_unitario_pais = df_export_pais['Valor'].sum() / df_export_pais['Quantidade'].sum() if df_export_pais['Quantidade'].sum() > 0 else 0
+
+                        st.markdown(f"**{row['País']}:**")
+                        st.markdown(f"  - **Custo Unitário Médio Total (últimos 5 anos):** {custo_unitario_pais:,.2f} US$/L")           
+
         # Exportação: Sessão Tables
         with sub_tab2:
             # Entrada do usuário para filtro
@@ -208,6 +355,37 @@ if option == 'Analytics':
                 df_filtrado = df_filtrado[
                     (df_filtrado['Ano'] >= year[0]) & (df_filtrado['Ano'] <= year[1])
                 ]
+
+            # Adicionando os anos filtrados no texto de Período Analisado
+            start_year, end_year = year
+
+            # Subtítulo do dashboard
+            st.markdown(
+                    f"""
+                    <h3> Análise de Exportação de Vinhos:
+                    <span style="color:#F1145C;"></span>
+                    </h3>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            # Texto do País de Origem com fonte maior
+            st.markdown(
+                    f"""
+                    <p style="font-size:20px;">País de Origem: 
+                    <span style="color:#F1145C;">Brasil</span></p>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            # Texto do Período Analisado com fonte maior e anos filtrados
+            st.markdown(
+                    f"""
+                    <p style="font-size:18px;">Período Analisado: 
+                    <span style="color:#F1145C;">{start_year} - {end_year}</span></p>
+                    """,
+                    unsafe_allow_html=True
+                )    
 
             # Cálculo das métricas filtradas
             total_quantity = df_filtrado["Quantidade"].sum()
@@ -256,10 +434,6 @@ if option == 'Analytics':
 
     ### Analytics Importações ###
     with tab2:
-        st.subheader('Importação de Vinho | País de Destino: Brasil')
-
-        st.markdown(f'Período: 2008 - 2023')
-
         sub_tab1, sub_tab2 = st.tabs(['Dashboard 📊', 'Table 📅'])
 
         ### Importação: Dashboard
@@ -310,6 +484,37 @@ if option == 'Analytics':
                 df_import_agg = (
                     df_filtered_import.groupby(['Ano', 'País'], as_index=False)['Valor']
                     .sum()
+                )
+
+                # Adicionando os anos filtrados no texto de Período Analisado
+                start_year_import, end_year_import = year_import
+
+                # Subtítulo do dashboard
+                st.markdown(
+                    f"""
+                    <h3> Análise de Importação de Vinhos:
+                    <span style="color:#F1145C;">Top {number_paises_import} Países</span>
+                    </h3>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # Texto do País de Origem com fonte maior
+                st.markdown(
+                    f"""
+                    <p style="font-size:20px;">País de Origem: 
+                    <span style="color:#F1145C;">Brasil</span></p>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                # Texto do Período Analisado com fonte maior e anos filtrados
+                st.markdown(
+                    f"""
+                    <p style="font-size:18px;">Período Analisado: 
+                    <span style="color:#F1145C;">{start_year_import} - {end_year_import}</span></p>
+                    """,
+                    unsafe_allow_html=True
                 )
 
                 #### Criação dos Gráficos ####
@@ -409,6 +614,37 @@ if option == 'Analytics':
                     (df_filtrado_import['Ano'] >= year_import[0]) & (df_filtrado_import['Ano'] <= year_import[1])
                 ]
 
+            # Adicionando os anos filtrados no texto de Período Analisado
+            start_year_import, end_year_import = year_import
+
+            # Subtítulo do dashboard
+            st.markdown(
+                    f"""
+                    <h3> Análise de Importação de Vinhos
+                    <span style="color:#F1145C;"></span>
+                    </h3>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            # Texto do País de Origem com fonte maior
+            st.markdown(
+                    f"""
+                    <p style="font-size:20px;">País de Origem: 
+                    <span style="color:#F1145C;">Brasil</span></p>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            # Texto do Período Analisado com fonte maior e anos filtrados
+            st.markdown(
+                    f"""
+                    <p style="font-size:18px;">Período Analisado: 
+                    <span style="color:#F1145C;">{start_year_import} - {end_year_import}</span></p>
+                    """,
+                    unsafe_allow_html=True
+                ) 
+
             # Cálculo das métricas filtradas
             total_quantity_import = df_filtrado_import["Quantidade"].sum()
             total_value_import = df_filtrado_import["Valor"].sum()
@@ -459,6 +695,7 @@ elif option == 'Upload':
 
     with st.expander('Processamento dos Dados'):
         st.markdown("""
+        **Essa sessão deve ser utilizada somente para a adição de novos dados no Banco de Dados para serem utilizados no módulo de Analytics.**
         1. **Download dos arquivos CSV no site:**
         - Acesse o site [VITIBRASIL - Embrapa](http://vitibrasil.cnpuv.embrapa.br/index.php?opcao=opt_01) e faça o download dos arquivos CSV desejados.
 
@@ -471,8 +708,7 @@ elif option == 'Upload':
 
         st.image('https://i.ibb.co/WfLxmdh/Data-Pipeline-Tech-Challenge.jpg')
 
-    tab1, tab2, tab3 = st.tabs(
-        ['Exportações', 'Importações', 'Comercialização'])
+    tab1, tab2 = st.tabs(['Exportações', 'Importações'])
 
     ### Upload de Dados de Exportação ###
     with tab1:
@@ -588,73 +824,6 @@ elif option == 'Upload':
             if st.button('Salvar dados no banco de dados', key='salve_import'):
                 try:
                     table_name = 'import_vinho'
-                    with engine.connect() as connection:
-                        try:
-                            existing_data = pd.read_sql(
-                                f"SELECT * FROM {table_name}", connection)
-                        except SQLAlchemyError:
-                            existing_data = pd.DataFrame()  # Caso a tabela não exista
-
-                    # Remover duplicados comparando com os dados existentes
-                    if not existing_data.empty:
-                        consolidated_data = consolidated_data[~consolidated_data.isin(
-                            existing_data.to_dict(orient='list')).all(axis=1)]
-
-                    # Salvar novos dados no banco de dados
-                    if not consolidated_data.empty:
-                        consolidated_data.to_sql(
-                            table_name, engine, if_exists='append', index=False)
-                        st.success(f'Dados salvos com sucesso na tabela `{table_name}` do banco de dados!')
-                    else:
-                        st.warning('Os dados já existem no banco de dados.')
-                except Exception as e:
-                    st.error(f'Erro ao salvar os dados no banco de dados: {e}')
-
-    ### Upload de Dados de Importação ###
-    with tab3:
-        st.header('Comercialização de Produtos')
-
-        with st.expander('Modelos de Arquivos'):
-            st.image('https://i.ibb.co/PjR58r2/Comercio.png')
-
-        # Upload de arquivos
-        uploaded_files = st.file_uploader(
-            'Faça upload dos arquivos csv:',
-            accept_multiple_files=True,
-            type=['csv'],
-            help='O upload dos arquivos deve ser feito conforme o formato esperado.',
-            key='files_comercializacao'
-        )
-
-        if uploaded_files:
-            consolidated_data = pd.DataFrame()
-
-            for uploaded_file in uploaded_files:
-                # Carregar o arquivo em um DataFrame
-                df = pd.read_csv(uploaded_file, sep=';')
-
-                # Processar o DataFrame usando o arquivo `data_comercio.py`
-                processed_data = process_file_comercio(df)
-
-                # Concatenar o DataFrame processado ao consolidado
-                consolidated_data = pd.concat(
-                    [consolidated_data, processed_data], ignore_index=True)
-
-            # Exibir os dados processados na interface
-            st.write('Dados processados:')
-            st.dataframe(
-                consolidated_data,
-                width=2000,
-                hide_index=True,
-                column_config={
-                    'Quantidade': st.column_config.NumberColumn('Quantidade', format='%.2f')
-                }
-            )
-
-            # Botão para salvar os dados no banco de dados
-            if st.button('Salvar dados no banco de dados', key='save_comercio'):
-                try:
-                    table_name = 'comercio_vinho'
                     with engine.connect() as connection:
                         try:
                             existing_data = pd.read_sql(
