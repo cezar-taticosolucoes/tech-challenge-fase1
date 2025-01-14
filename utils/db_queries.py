@@ -1,9 +1,7 @@
 import pandas as pd
 
+# Função que executa uma query no Banco de Dados PostgreSQL e retorna o ano mais recente da tabela export_vinho
 def get_recent_year_export(engine):
-    """
-    Obtém o ano mais recente na tabela export_vinho.
-    """
     query_max_year_export = '''
     SELECT MAX(CAST("Ano" AS INTEGER)) AS ano_mais_recente
     FROM export_vinho;
@@ -11,10 +9,8 @@ def get_recent_year_export(engine):
     result_export = pd.read_sql(query_max_year_export, engine)
     return int(result_export.loc[0, 'ano_mais_recente'])
 
+# Função que executa uma query no Banco de Dados PostgreSQL e retorna os dados dos últimos 15 anos da tabela export_vinho
 def get_last_15_years_data_export(engine):
-    """
-    Retorna os dados dos últimos 15 anos da tabela export_vinho.
-    """
     ano_mais_recente = get_recent_year_export(engine)
     ano_limite_export = ano_mais_recente - 15
 
@@ -27,10 +23,8 @@ def get_last_15_years_data_export(engine):
     df_export['Ano'] = df_export['Ano'].astype(int)
     return df_export
 
+# Função que executa uma query no Banco de Dados PostgreSQL e retorna o ano mais recente da tabela import_vinho
 def get_recent_year_import(engine):
-    """
-    Obtém o ano mais recente na tabela export_vinho.
-    """
     query_max_year_export = '''
     SELECT MAX(CAST("Ano" AS INTEGER)) AS ano_mais_recente
     FROM export_vinho;
@@ -38,10 +32,8 @@ def get_recent_year_import(engine):
     result_export = pd.read_sql(query_max_year_export, engine)
     return int(result_export.loc[0, 'ano_mais_recente'])
 
+# Função que executa uma query no Banco de Dados PostgreSQL e retorna os dados dos últimos 15 anos da tabela import_vinho
 def get_last_15_years_data_import(engine):
-    """
-    Retorna os dados dos últimos 15 anos da tabela export_vinho.
-    """
     ano_mais_recente_import = get_recent_year_import(engine)
     ano_limite_import = ano_mais_recente_import - 15
 

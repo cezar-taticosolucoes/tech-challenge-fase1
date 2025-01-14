@@ -6,7 +6,6 @@ from streamlit_option_menu import option_menu
 # Import de Funções da Pasta utils/
 from utils.pipeline_export import process_file
 from utils.pipeline_import import process_file_import
-from utils.pipeline_comercio import process_file_comercio
 from utils.functions import format_number, converte_csv, mensagem_sucesso
 from utils.db_queries import get_last_15_years_data_export, get_last_15_years_data_import
 
@@ -18,14 +17,14 @@ import time
 import pandas as pd
 import plotly.express as px
 
-# Configuração inicial da Aplicação Streamlit
+# Configuração inicial do App
 st.set_page_config(
     page_title='Analytics | Vinhos',
     page_icon='🍷',
     layout='wide'
 )
 
-# Navegação da Aplicação Streamlit
+# Navegação do App
 with st.sidebar:
     option = option_menu(
         menu_title="Navegação",
@@ -35,12 +34,11 @@ with st.sidebar:
         default_index=0
     )
 
-# Configurar a conexão com o banco de dados PostgreSQL
+# Configuração do Banco de Dados PostgreSQl
 db_url = st.secrets["DB_URL"]
 engine = create_engine(db_url)
 
 
-#### Tabelas para montagem dos Dashboards ####
 # Consulta SQL Tabela: export_vinho
 df_export = get_last_15_years_data_export(engine)
 
@@ -51,12 +49,12 @@ df_import = get_last_15_years_data_import(engine)
 if option == 'Analytics':
     st.title('Data Analytics')
 
-    ### Visualização no Streamlit ###
+    ### Abas: Exportação e Importação ###
     tab1, tab2 = st.tabs(['Exportação', 'Importação'])
 
     ### Analytics Exportação ###
     with tab1:       
-        sub_tab1, sub_tab2 = st.tabs(['Dashboard 📊', 'Table 📅'])
+        sub_tab1, sub_tab2 = st.tabs(['Dashboard 📊', 'Tabela 🗂️'])
 
         ### Exportação: Dashboard
         with sub_tab1:
@@ -68,8 +66,8 @@ if option == 'Analytics':
                         # Filtro Número de Países
                         number_paises = st.number_input('Número de países a serem análisados', min_value=2, max_value=15, value=5, help='Selecionar o número de Países que serão análisados: de 2 a 15.')
                     with col2:
-                        # Filtro de Tipo
-                        tipos_disponiveis = df_export['Tipo'].dropna().unique()  # Obtém os tipos únicos
+                        # Filtro de Tipos
+                        tipos_disponiveis = df_export['Tipo'].dropna().unique()
                         tipo_selecionado = st.multiselect(
                             "Selecione o(s) Tipo(s):",
                             options=tipos_disponiveis,
@@ -85,7 +83,7 @@ if option == 'Analytics':
                             key="year_slider"
                         )
                 
-                # Aplicar filtros no DataFrame
+                # Aplicar filtros no DataFrame: df_export
                 df_filtered = df_export[
                     (df_export['Ano'] >= year[0]) & 
                     (df_export['Ano'] <= year[1]) &
@@ -101,13 +99,13 @@ if option == 'Analytics':
                 )
                 df_filtered = df_filtered[df_filtered['País'].isin(top_countries)]
 
-                # Agregar os dados por Ano e País
+                # Groupby dos dados por Ano e País
                 df_export_agg = (
                     df_filtered.groupby(['Ano', 'País'], as_index=False)['Valor']
                     .sum()
                 )
 
-                # Adicionando os anos filtrados no texto de Período Analisado
+                # Ano de início e ano final de análise
                 start_year, end_year = year
 
                 # Subtítulo do dashboard
@@ -120,7 +118,7 @@ if option == 'Analytics':
                     unsafe_allow_html=True
                 )
 
-                # Texto do País de Origem com fonte maior
+                # País de Origem
                 st.markdown(
                     f"""
                     <p style="font-size:20px;">País de Origem: 
@@ -129,7 +127,7 @@ if option == 'Analytics':
                     unsafe_allow_html=True
                 )
 
-                # Texto do Período Analisado com fonte maior e anos filtrados
+                # Período Analisado
                 st.markdown(
                     f"""
                     <p style="font-size:18px;">Período Analisado: 
@@ -139,14 +137,14 @@ if option == 'Analytics':
                 )
 
                 #### Criação dos Gráficos ####
-                # Gráfico de barras - Valor
+                # Gráfico de barras: Valor
                 df_valor_pais = (
                     df_filtered.groupby('País', as_index=False)['Valor']
                     .sum()
                     .nlargest(number_paises, 'Valor')
                 )
 
-                # Garante a ordem dos países baseada nos valores
+                # Ordemm com base no valor
                 country_order_valor = df_valor_pais.sort_values('Valor', ascending=False)['País'].tolist()
 
                 fig_valor_pais = px.bar(
@@ -161,14 +159,14 @@ if option == 'Analytics':
                     height=500 + (number_paises - 5) * 50
                 )
 
-                # Gráfico de barras - Quantidade
+                # Gráfico de barras: Quantidade
                 df_quant_pais = (
                     df_filtered.groupby('País', as_index=False)['Quantidade']
                     .sum()
                     .nlargest(number_paises, 'Quantidade')
                 )
 
-                # Garante a ordem dos países baseada nas quantidades
+                # Ordem com base na quantidade
                 country_order_quant = df_quant_pais.sort_values('Quantidade', ascending=False)['País'].tolist()
 
                 fig_quant_pais = px.bar(
@@ -183,7 +181,7 @@ if option == 'Analytics':
                     height=500 + (number_paises - 5) * 50
                 )
 
-                # Gráfico de linhas - Valor por Ano
+                # Gráfico de linhas: Valor por Ano
                 fig_valor_ano_pais = px.line(
                     df_export_agg,
                     x='Ano',
@@ -196,7 +194,7 @@ if option == 'Analytics':
                     hover_data={'Ano': True, 'Valor': ':.2f'}
                 )
 
-                # Gráficos de Barras
+                # Exibição dos Gráficos
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric(f'💵 Valor Total (US$): Top {number_paises} Países', format_number(df_valor_pais['Valor'].sum()))
@@ -209,6 +207,7 @@ if option == 'Analytics':
 
                 st.divider()
 
+                # Sessão para Análises Complementares
                 st.markdown(
                     f"""
                     <h4>Análises Complementares</h4>
@@ -218,17 +217,16 @@ if option == 'Analytics':
 
                 # Análise do Custo Unitário Médio Total de Exportação de Vinho
                 if not df_export.empty:
-                    # Filtrar para evitar divisões por zero ou valores nulos
                     df_export_valid = df_export[df_export['Quantidade'] > 0].copy()
                     df_export_valid['Custo Unitário Médio'] = df_export_valid['Valor'] / df_export_valid['Quantidade']
 
-                    # Cálculo do custo unitário médio total
+                    # Custo unitário médio total
                     custo_unitario_medio_total = (
                         df_export_valid['Valor'].sum() / df_export_valid['Quantidade'].sum()
                         if df_export_valid['Quantidade'].sum() > 0 else 0
                     )
 
-                    # Cálculo do custo unitário médio por tipo
+                    # Custo unitário médio por tipo
                     custo_unitario_por_tipo = (
                         df_export_valid.groupby('Tipo', as_index=False)
                         .apply(lambda x: (x['Valor'].sum() / x['Quantidade'].sum()) if x['Quantidade'].sum() > 0 else 0)
@@ -249,7 +247,7 @@ if option == 'Analytics':
                 else:
                     st.warning("Não há dados disponíveis para realizar esta análise.")
 
-                # Análise de Pico de Exportação
+                # Análise do Pico de Exportação
                 df_export_valid['Ano'] = df_export_valid['Ano'].astype(int)
                 pico_exportacao = (
                     df_export_valid.groupby(['País', 'Ano'])[['Valor', 'Quantidade']]
@@ -263,10 +261,10 @@ if option == 'Analytics':
                 valor_pico = pico_exportacao['Valor']
                 quantidade_pico = pico_exportacao['Quantidade']
 
-                # Cálculo do custo unitário no ano de pico
+                # Custo unitário no ano de pico
                 custo_unitario_pico = valor_pico / quantidade_pico
 
-                # Cálculo do custo unitário no ano anterior
+                # Custo unitário no ano anterior
                 df_ano_anterior = df_export_valid[(df_export_valid['País'] == pais_pico) & (df_export_valid['Ano'] == (ano_pico - 1))]
                 if not df_ano_anterior.empty:
                     valor_ano_anterior = df_ano_anterior['Valor'].sum()
@@ -275,7 +273,7 @@ if option == 'Analytics':
                 else:
                     custo_unitario_ano_anterior = None
 
-                # Análise textual do pico
+                # Explicação do Pico
                 explicacao_pico = (
                     f"O país **{pais_pico}** registrou o maior pico de exportação de vinho no ano **{ano_pico}**, com um valor total exportado de **{valor_pico:,.2f}** e um volume de **{quantidade_pico:,.2f}** litros. O custo unitário médio no ano de pico foi **{custo_unitario_pico:,.2f}**."
                 )
@@ -319,7 +317,7 @@ if option == 'Analytics':
                             f"- **{row['País']}:** Valor exportado: **{row['Valor']:,.2f}**, Quantidade exportada: **{row['Quantidade']:,.2f}** litros"
                         )
 
-                    # Cálculo do custo unitário médio total dos últimos 5 anos para os 3 principais exportadores
+                    # Custo unitário médio total dos últimos 5 anos para os 3 principais exportadores
                     st.markdown("**Análise do Custo Unitário Médio dos 3 Principais Exportadores nos Últimos 5 Anos:**")
                     for _, row in top_3_exportadores.iterrows():
                         df_export_pais = df_export_valid_ultimos_5_anos[df_export_valid_ultimos_5_anos['País'] == row['País']]
@@ -330,7 +328,7 @@ if option == 'Analytics':
 
         # Exportação: Sessão Tables
         with sub_tab2:
-            # Entrada do usuário para filtro
+            # Filtros
             with st.expander('Filtros'):
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -343,7 +341,7 @@ if option == 'Analytics':
                                     df_export['Ano'].max(), 
                                     (df_export['Ano'].min(), df_export['Ano'].max()))
 
-            # Aplicando os filtros no DataFrame
+            # Aplicando os filtros no DataFrame: df_export
             df_filtrado = df_export.copy()
 
             if pais:
@@ -355,7 +353,7 @@ if option == 'Analytics':
                     (df_filtrado['Ano'] >= year[0]) & (df_filtrado['Ano'] <= year[1])
                 ]
 
-            # Adicionando os anos filtrados no texto de Período Analisado
+            # Ano de início e ano final de análise
             start_year, end_year = year
 
             # Subtítulo do dashboard
@@ -368,7 +366,7 @@ if option == 'Analytics':
                     unsafe_allow_html=True
                 )
 
-            # Texto do País de Origem com fonte maior
+            # País de origem
             st.markdown(
                     f"""
                     <p style="font-size:20px;">País de Origem: 
@@ -377,7 +375,7 @@ if option == 'Analytics':
                     unsafe_allow_html=True
                 )
 
-            # Texto do Período Analisado com fonte maior e anos filtrados
+            # Período Analisado
             st.markdown(
                     f"""
                     <p style="font-size:18px;">Período Analisado: 
@@ -386,22 +384,22 @@ if option == 'Analytics':
                     unsafe_allow_html=True
                 )    
 
-            # Cálculo das métricas filtradas
+            # Valor Total e Quantidade Total
             total_quantity = df_filtrado["Quantidade"].sum()
             total_value = df_filtrado["Valor"].sum()
 
-            # Formatação de valores para exibição
+            # Formatação Valor Total e Quantidade Total
             quantidade_formatada = format_number(total_quantity)
             valor_formatado = format_number(total_value)
 
-            # Exibição de métricas
+            # Exibição dos Valores Totais
             col1, col2 = st.columns(2)
             with col1:
                 col1.metric("💵 Valor Total (US$)", valor_formatado)
             with col2:
                 col2.metric("🍷 Quantidade Total (L)", quantidade_formatada)
 
-            # Exibição da tabela com os dados filtrados
+            # Exibição da tabela
             if not df_filtrado.empty:
                 st.dataframe(
                     df_filtrado,
@@ -416,13 +414,15 @@ if option == 'Analytics':
             else:
                 st.warning("Nenhum resultado encontrado para os filtros aplicados.")
             
+            # Número de linhas da tabela (Dinâmico a partir dos filtros aplicados)
             st.markdown(
                 f"""
                 <p>A tabela possui <span style="color:#F1145C;">{df_filtrado.shape[0]}</span> linhas.
                 """, 
                 unsafe_allow_html=True
             )
-
+            
+            # Download da tabela em formato csv
             st.markdown('Escreva um nome para o arquivo')
             coluna1, coluna2 = st.columns(2)
             with coluna1:
@@ -433,7 +433,7 @@ if option == 'Analytics':
 
     ### Analytics Importações ###
     with tab2:
-        sub_tab1, sub_tab2 = st.tabs(['Dashboard 📊', 'Table 📅'])
+        sub_tab1, sub_tab2 = st.tabs(['Dashboard 📊', 'Tabela 🗂️'])
 
         ### Importação: Dashboard
         with sub_tab1:
@@ -445,7 +445,7 @@ if option == 'Analytics':
                         # Filtro Número de Países
                         number_paises_import = st.number_input('Número de países a serem análisados', min_value=2, max_value=15, value=5, help='Selecionar o número de Países que serão análisados: de 2 a 15.',key='number_paises_import')
                     with col2:
-                        # Filtro de Tipo
+                        # Filtro de Tipos
                         tipos_disponiveis_import = df_import['Tipo'].dropna().unique()
                         tipo_selecionado_import = st.multiselect(
                             "Selecione o(s) Tipo(s):",
@@ -463,7 +463,7 @@ if option == 'Analytics':
                             key="year_import"
                         )
                 
-                # Aplicar filtros no DataFrame
+                # Aplicar filtros no DataFrame: df_import
                 df_filtered_import = df_import[
                     (df_import['Ano'] >= year_import[0]) & 
                     (df_import['Ano'] <= year_import[1]) &
@@ -479,13 +479,13 @@ if option == 'Analytics':
                 )
                 df_filtered_import = df_filtered_import[df_filtered_import['País'].isin(top_countries_import)]
 
-                # Agregar os dados por Ano e País
+                # Groupby dos dados por Ano e País
                 df_import_agg = (
                     df_filtered_import.groupby(['Ano', 'País'], as_index=False)['Valor']
                     .sum()
                 )
 
-                # Adicionando os anos filtrados no texto de Período Analisado
+                # Ano de início e ano final de análise
                 start_year_import, end_year_import = year_import
 
                 # Subtítulo do dashboard
@@ -498,7 +498,7 @@ if option == 'Analytics':
                     unsafe_allow_html=True
                 )
 
-                # Texto do País de Origem com fonte maior
+                # País de origem
                 st.markdown(
                     f"""
                     <p style="font-size:20px;">País de Origem: 
@@ -507,7 +507,7 @@ if option == 'Analytics':
                     unsafe_allow_html=True
                 )
 
-                # Texto do Período Analisado com fonte maior e anos filtrados
+                # Período analisado
                 st.markdown(
                     f"""
                     <p style="font-size:18px;">Período Analisado: 
@@ -517,14 +517,14 @@ if option == 'Analytics':
                 )
 
                 #### Criação dos Gráficos ####
-                # Gráfico de barras - Valor
+                # Gráfico de barras: Valor
                 df_valor_pais_import = (
                     df_filtered_import.groupby('País', as_index=False)['Valor']
                     .sum()
                     .nlargest(number_paises_import, 'Valor')
                 )
 
-                # Garante a ordem dos países baseada nos valores
+                # Ordem por valor
                 country_order_valor_import = df_valor_pais_import.sort_values('Valor', ascending=False)['País'].tolist()
 
                 fig_valor_pais_import = px.bar(
@@ -539,14 +539,14 @@ if option == 'Analytics':
                     height=500 + (number_paises_import - 5) * 50
                 )
 
-                # Gráfico de barras - Quantidade
+                # Gráfico de barras: Quantidade
                 df_quant_pais_import = (
                     df_filtered_import.groupby('País', as_index=False)['Quantidade']
                     .sum()
                     .nlargest(number_paises_import, 'Quantidade')
                 )
 
-                # Garante a ordem dos países baseada nas quantidades
+                # Ordem por quantidade
                 country_order_quant_import = df_quant_pais_import.sort_values('Quantidade', ascending=False)['País'].tolist()
 
                 fig_quant_pais_import = px.bar(
@@ -561,7 +561,7 @@ if option == 'Analytics':
                     height=500 + (number_paises_import - 5) * 50
                 )
 
-                # Gráfico de linhas - Valor por Ano
+                # Gráfico de linhas: Valor por Ano
                 fig_valor_ano_pais_import = px.line(
                     df_import_agg,
                     x='Ano',
@@ -574,7 +574,7 @@ if option == 'Analytics':
                     hover_data={'Ano': True, 'Valor': ':.2f'}
                 )
 
-                # Gráficos de Barras
+                # Exibição dos gráficos
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric(f'💵 Valor Total (US$): Top {number_paises_import} Países', format_number(df_valor_pais_import['Valor'].sum()))
@@ -587,7 +587,7 @@ if option == 'Analytics':
         
         ### Importação: Tabelas
         with sub_tab2:
-            # Entrada do usuário para filtro
+            # Filtros
             with st.expander('Filtros'):
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -601,7 +601,7 @@ if option == 'Analytics':
                                     (df_import['Ano'].min(), df_import['Ano'].max()),
                                     key='import_year')
                     
-            # Aplicando os filtros no DataFrame
+            # Aplicando os filtros no DataFrame: df_import
             df_filtrado_import = df_import.copy()
 
             if pais_import:
@@ -613,7 +613,7 @@ if option == 'Analytics':
                     (df_filtrado_import['Ano'] >= year_import[0]) & (df_filtrado_import['Ano'] <= year_import[1])
                 ]
 
-            # Adicionando os anos filtrados no texto de Período Analisado
+            # AAno de início e ano final de análise
             start_year_import, end_year_import = year_import
 
             # Subtítulo do dashboard
@@ -626,7 +626,7 @@ if option == 'Analytics':
                     unsafe_allow_html=True
                 )
 
-            # Texto do País de Origem com fonte maior
+            # País de origem
             st.markdown(
                     f"""
                     <p style="font-size:20px;">País de Origem: 
@@ -635,7 +635,7 @@ if option == 'Analytics':
                     unsafe_allow_html=True
                 )
 
-            # Texto do Período Analisado com fonte maior e anos filtrados
+            # Período analisado
             st.markdown(
                     f"""
                     <p style="font-size:18px;">Período Analisado: 
@@ -644,22 +644,22 @@ if option == 'Analytics':
                     unsafe_allow_html=True
                 ) 
 
-            # Cálculo das métricas filtradas
+            # Valor Total e Quantidade Total
             total_quantity_import = df_filtrado_import["Quantidade"].sum()
             total_value_import = df_filtrado_import["Valor"].sum()
 
-            # Formatação de valores para exibição
+            # Formato Valor Total e Quantidade Total
             quantidade_formatada_import = format_number(total_quantity_import)
             valor_formatado_import = format_number(total_value_import)
 
-            # Exibição de métricas
+            # Exibição Valor Total e Quantidade Total
             col1, col2 = st.columns(2)
             with col1:
                 col1.metric("💵 Valor Total (US$)", valor_formatado_import)
             with col2:
                 col2.metric("🍷 Quantidade Total (L)", quantidade_formatada_import)
 
-            # Exibição da tabela com os dados filtrados
+            # Exibição da tabela
             if not df_filtrado_import.empty:
                 st.dataframe(
                     df_filtrado_import,
@@ -674,6 +674,7 @@ if option == 'Analytics':
             else:
                 st.warning("Nenhum resultado encontrado para os filtros aplicados.")
             
+            # Número de linhas da tabela
             st.markdown(
                 f"""
                 <p>A tabela possui <span style="color:#F1145C;">{df_filtrado_import.shape[0]}</span> linhas.
@@ -681,6 +682,7 @@ if option == 'Analytics':
                 unsafe_allow_html=True
             )
 
+            # Download da tabela em formato csv
             st.markdown('Escreva um nome para o arquivo')
             coluna1, coluna2 = st.columns(2)
             with coluna1:
@@ -688,10 +690,10 @@ if option == 'Analytics':
                 nome_arquivo_import += '.csv'
             with coluna2:
                 st.download_button('Download', data = converte_csv(df_filtrado_import), file_name = nome_arquivo_import, mime = 'text/csv', on_click = mensagem_sucesso, help='Clique para fazer download dos dados em formato csv.', key='download_import')
-
+### Página Upload ###
 elif option == 'Upload':
     st.title('Upload de Dados')
-
+    # Explicação do Processo
     with st.expander('Processamento dos Dados'):
         st.markdown("""
         **Essa sessão deve ser utilizada somente para a adição de novos dados no Banco de Dados para serem utilizados no módulo de Analytics.**
@@ -707,6 +709,7 @@ elif option == 'Upload':
 
         st.image('https://i.ibb.co/WfLxmdh/Data-Pipeline-Tech-Challenge.jpg')
 
+    # Abas: Exportação e Importação
     tab1, tab2 = st.tabs(['Exportações', 'Importações'])
 
     ### Upload de Dados de Exportação ###
@@ -724,7 +727,8 @@ elif option == 'Upload':
             help='O upload dos arquivos deve ser feito exatamente como foram feitos os downloads do site.',
             key='files_export'
         )
-
+        
+        # Processamento dos dados
         if uploaded_files:
             consolidated_data = pd.DataFrame()
 
@@ -732,14 +736,14 @@ elif option == 'Upload':
                 # Carregar o arquivo em um DataFrame
                 df = pd.read_csv(uploaded_file, sep=';')
 
-                # Processar o DataFrame usando o arquivo `data_exportacao.py`
+                # Processar o DataFrame usando o arquivo utilizando 'pipeline_export.py'
                 processed_data = process_file(uploaded_file.name, df)
 
-                # Concatenar o DataFrame processado ao consolidado
+                # Concatenar o DataFrame
                 consolidated_data = pd.concat(
                     [consolidated_data, processed_data], ignore_index=True)
 
-            # Exibir os dados processados na interface
+            # Exibir os dados
             st.write('Dados processados:')
             st.dataframe(
                 consolidated_data,
@@ -751,7 +755,7 @@ elif option == 'Upload':
                 }
             )
 
-            # Botão para salvar os dados no banco de dados
+            # Botão para salvar os dados no banco de dados PostgreSQL
             if st.button('Salvar dados no banco de dados'):
                 try:
                     table_name = 'export_vinho'
@@ -793,6 +797,7 @@ elif option == 'Upload':
             key='files_import'
         )
 
+        # Processamento dos dados
         if uploaded_files:
             consolidated_data = pd.DataFrame()
 
@@ -800,14 +805,14 @@ elif option == 'Upload':
                 # Carregar o arquivo em um DataFrame
                 df = pd.read_csv(uploaded_file, sep=';')
 
-                # Processar o DataFrame usando o arquivo `data_importacao.py`
+                # Processar o DataFrame usando o arquivo `pipeline_import.py`
                 processed_data = process_file_import(uploaded_file.name, df)
 
-                # Concatenar o DataFrame processado ao consolidado
+                # Concatenar o DataFrame
                 consolidated_data = pd.concat(
                     [consolidated_data, processed_data], ignore_index=True)
 
-            # Exibir os dados processados na interface
+            # Exibir os dados
             st.write('Dados processados:')
             st.dataframe(
                 consolidated_data,
@@ -845,7 +850,7 @@ elif option == 'Upload':
                 except Exception as e:
                     st.error(f'Erro ao salvar os dados no banco de dados: {e}')
 
-# Adicionar rodapé com informações de direitos autorais
+# Rodapé
 st.markdown(f"""
     <style>
     footer {{
