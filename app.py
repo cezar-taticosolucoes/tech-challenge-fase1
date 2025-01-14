@@ -2,7 +2,6 @@
 import streamlit as st
 import streamlit_option_menu
 from streamlit_option_menu import option_menu
-from streamlit_echarts import st_echarts
 
 # Import de Funções da Pasta utils/
 from utils.pipeline_export import process_file
